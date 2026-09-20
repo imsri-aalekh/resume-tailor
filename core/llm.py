@@ -73,7 +73,7 @@ PROVIDERS: Dict[str, Provider] = {
         key="gemini", label="Google Gemini (free tier)",
         url="https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         fmt="openai", auth="bearer",
-        default_model="gemini-2.0-flash",
+        default_model="gemini-3.6-flash",
         console="https://aistudio.google.com/apikey",
         free=True, json_mode=True,
         note="Free tier via AI Studio. Uses Google's OpenAI-compatible endpoint.",
@@ -202,6 +202,28 @@ class LLMClient:
         return {"input_tokens": u.get("prompt_tokens", 0),
                 "output_tokens": u.get("completion_tokens", 0)}
 
+
+    def _model_gone_message(self, body: str) -> str:
+        """Turn a 404 about a retired model into something actionable."""
+        names = re.findall(r"models/([A-Za-z0-9._\-]+)", body)
+        current = self.model.split("/")[-1]
+        suggested = next((n for n in names if n.strip(".") != current), "")
+        if not suggested:
+            m = re.search(r"use\s+[`\"']?([A-Za-z0-9._\-]{4,})[`\"']?", body)
+            suggested = m.group(1) if m else ""
+        if suggested:
+            return (
+                f"{self.provider.label} has retired the model '{self.model}'. "
+                f"It suggests '{suggested}'. Put that in the sidebar's "
+                f"\u201c\u2026or type a model name\u201d box and run it again \u2014 "
+                f"no redeploy needed."
+            )
+        return (
+            f"{self.provider.label} does not recognise the model '{self.model}'. "
+            f"Copy a current model name from {self.provider.console} into the "
+            f"sidebar's model box."
+        )
+
     # -- the call --------------------------------------------------------
     def complete(self, system: str, user: str, *, max_tokens: int = 4000,
                  temperature: float = 0.2, label: str = "",
@@ -258,6 +280,10 @@ class LLMClient:
                     f"{self.provider.label} rejected the key ({r.status_code}). "
                     f"Check it at {self.provider.console}. Details: {body}"
                 )
+            if r.status_code == 404:
+                # Providers retire model names constantly, and they usually name
+                # the replacement in the error. Surface that instead of raw JSON.
+                raise LLMError(self._model_gone_message(body))
             raise LLMError(f"{self.provider.label} error {r.status_code}: {body}")
 
         hint = ""
