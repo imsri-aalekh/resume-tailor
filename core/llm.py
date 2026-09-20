@@ -50,6 +50,7 @@ class Provider:
     rpm: int = 0                 # free-tier requests per minute; 0 = unmetered
     local: bool = False          # runs on this machine; needs no API key
     no_think: bool = False       # ask reasoning models to skip the thinking pass
+    alt_models: tuple = ()       # other models worth offering in the dropdown
 
 
 PROVIDERS: Dict[str, Provider] = {
@@ -76,11 +77,20 @@ PROVIDERS: Dict[str, Provider] = {
         key="groq", label="Groq (free tier)",
         url="https://api.groq.com/openai/v1/chat/completions",
         fmt="openai", auth="bearer",
-        default_model="llama-3.3-70b-versatile",
+        # llama-3.3-70b-versatile was decommissioned 16 Aug 2026 and both
+        # remaining Llama models are Enterprise-only, so there is no free Llama
+        # here any more. Every free-tier Groq model is now a reasoning model,
+        # and Qwen is the only free family whose reasoning can be turned fully
+        # off — which is what this app wants, since the critic loop is its
+        # reasoning and an unturned-off thinking pass eats the token budget and
+        # returns empty content.
+        default_model="qwen/qwen3.8-27b",
+        alt_models=("openai/gpt-oss-120b", "openai/gpt-oss-20b"),
         console="https://console.groq.com/keys",
-        free=True, rpm=25, json_mode=True,
-        note="Free tier, no card. Rate limited per minute and per day. "
-             "Expect more blocked rewrites than Claude — the guards catch them.",
+        free=True, rpm=30, json_mode=True, no_think=True,
+        note="Free tier, no card. 30 requests/min. Every free model here is a "
+             "reasoning model; this one lets us switch that off. Expect more "
+             "blocked rewrites than Claude — the guards catch them.",
     ),
     "gemini": Provider(
         key="gemini", label="Google Gemini (free tier)",

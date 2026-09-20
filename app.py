@@ -188,7 +188,9 @@ with st.sidebar:
     elif prov_choice == "anthropic":
         model_options = [prov.default_model, SMART_MODEL]
     else:
-        model_options = [prov.default_model]
+        # Provider model names churn — Groq decommissioned its free Llama
+        # outright — so offer the alternates rather than making people guess.
+        model_options = [prov.default_model, *prov.alt_models]
     model = st.selectbox("Model", model_options, index=0)
     model = st.text_input(
         "…or type a model name", value=model,
@@ -422,11 +424,29 @@ with tab_gaps:
         report: Optional[GapReport] = st.session_state.get("report")
         if jd and report:
             if not jd.used_llm:
-                st.warning(
-                    "Running without an API key, so this is the vocabulary-based "
-                    "fallback analysis. It finds the obvious keywords and misses "
-                    "the nuance. Add a key for the real thing."
-                )
+                if jd.llm_error:
+                    # A key was present and the call still failed. Telling
+                    # people to "add a key" here sent them hunting for one they
+                    # already had — the real reason was a retired model name.
+                    st.error(
+                        f"**The model pass failed, so this is the offline "
+                        f"vocabulary analysis.**\n\n{jd.llm_error}\n\n"
+                        f"The gap report below is still real — it just finds "
+                        f"the obvious keywords and misses nuance. Fix the "
+                        f"above and press *Analyse the gap* again."
+                    )
+                elif not use_llm_jd:
+                    st.info(
+                        "Offline vocabulary analysis — the model pass is "
+                        "switched off above. Tick the box and re-run for the "
+                        "full reading."
+                    )
+                else:
+                    st.warning(
+                        "Running without an API key, so this is the vocabulary-based "
+                        "fallback analysis. It finds the obvious keywords and misses "
+                        "the nuance. Add a key for the real thing."
+                    )
             c1, c2 = st.columns([1, 2], gap="large")
             with c1:
                 _score_card(st.session_state["ats_before"], "ATS score, as it stands")
