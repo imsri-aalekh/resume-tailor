@@ -63,17 +63,42 @@ git ls-remote origin          # should list refs/heads/main
 
    - **Python version** → `3.11` or `3.12`. Not 3.13 — the `lxml` and
      `pdfplumber` wheels lag a release behind and the build can fail on it.
-   - **Secrets** → paste exactly this, with your real key:
+   - **Secrets** → paste the line for whichever provider you are using:
 
      ```toml
-     ANTHROPIC_API_KEY = "sk-ant-..."
+     # pick ONE
+     ANTHROPIC_API_KEY  = "sk-ant-..."     # best results, paid
+     GROQ_API_KEY       = "gsk_..."        # free tier, no card
+     GEMINI_API_KEY     = "AIza..."        # free tier via AI Studio
+     OPENROUTER_API_KEY = "sk-or-..."      # free models available
      ```
+
+     It is TOML, so the quotes are required.
 
 5. **Deploy**. First build takes 2–4 minutes (it is compiling nothing; it is
    just pip and the container).
 
-The app reads the key from secrets automatically — the sidebar will say "API key
-loaded from secrets" rather than showing a key box.
+The app reads the key from secrets automatically — the sidebar will confirm
+which variable it found rather than showing a key box. Pick the matching
+provider in the sidebar dropdown.
+
+**You can deploy with no key at all.** Resume parsing, JD analysis, the gap
+report and ATS scoring all run without one. Only the tailoring agent and the
+writing extras call a model. Deploying keyless first is the fastest way to
+check the parser reads your resume correctly.
+
+### Where to get a key
+
+| Provider | Cost | Key from |
+|---|---|---|
+| Anthropic | Paid — a Claude subscription does **not** include API credit; add credit in Billing | <https://console.anthropic.com> |
+| Groq | Free tier, no card, rate limited | <https://console.groq.com/keys> |
+| Google Gemini | Free tier via AI Studio | <https://aistudio.google.com/apikey> |
+| OpenRouter | Models ending `:free` cost nothing | <https://openrouter.ai/keys> |
+
+Free-tier models follow the strict rewrite rules less reliably, so you will see
+more blocked rewrites. That fails safe — a blocked rewrite keeps your original
+wording — but the tailoring will be flatter than Claude's.
 
 ---
 
@@ -115,6 +140,9 @@ Click **Manage app** in the bottom right for the build log.
 |---|---|
 | `No matching distribution found for lxml` | Python version is 3.13 — change it in Advanced settings and reboot the app |
 | `ModuleNotFoundError: No module named 'core'` | Main file path is wrong; it must be `app.py` at the repo root, not a path into a subfolder |
-| `KeyError: 'ANTHROPIC_API_KEY'` | Secrets were not saved, or were pasted as `ANTHROPIC_API_KEY=...` without quotes. TOML needs the quotes |
+| `KeyError: 'ANTHROPIC_API_KEY'` | Secrets were not saved, or were pasted without quotes. TOML needs the quotes |
+| `rejected the key (401)` | Key is for a different provider than the sidebar dropdown, or was revoked |
+| `HTTP 429` on a free tier | Rate limited. Wait a minute, or drop critique rounds to 1 in the sidebar |
+| `unknown model` / `model_not_found` | Provider renamed the model. Copy the current name from their docs into the sidebar's model box |
 | Build hangs, then times out | You renamed `packages.txt.optional` to `packages.txt`. Rename it back — texlive does not fit |
 | Repo not listed when creating the app | Streamlit was not authorised for private repos. Revoke and re-authorise, or make the repo public |

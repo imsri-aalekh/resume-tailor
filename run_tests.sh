@@ -4,7 +4,7 @@
 set -uo pipefail
 cd "$(dirname "$0")"
 fail=0
-for t in tests/test_parser_templates.py tests/test_pipeline.py tests/test_app_smoke.py; do
+for t in tests/test_parser_templates.py tests/test_providers.py tests/test_pipeline.py tests/test_app_smoke.py; do
   echo ""
   echo "════ $t ════"
   python3 "$t" || fail=1

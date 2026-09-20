@@ -25,7 +25,7 @@ from core.diffing import change_stats, to_html, unified
 from core.jd_extract import JDAnalysis, analyse
 from core.jd_fetch import JobPosting, fetch
 from core.latexdoc import ResumeDoc, parse as parse_tex, render
-from core.llm import DEFAULT_MODEL, LLMClient, SMART_MODEL
+from core.llm import PROVIDERS, LLMClient, SMART_MODEL
 from core.matcher import GapReport, LEVEL_LABEL, build_report
 from core.render import available_engines, compile_tex, shim_class
 
@@ -78,14 +78,26 @@ def _init() -> None:
 _init()
 
 
+def secret(name: str) -> str:
+    """Read a key from the sidebar, then the environment, then st.secrets."""
+    val = st.session_state.get("api_key") or ""
+    if val:
+        return val
+    val = os.environ.get(name, "")
+    if val:
+        return val
+    try:
+        return st.secrets.get(name, "") or ""
+    except Exception:
+        return ""
+
+
 def client_for(model: str) -> LLMClient:
-    key = st.session_state.get("api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
-    if not key:
-        try:
-            key = st.secrets.get("ANTHROPIC_API_KEY", "")
-        except Exception:
-            key = ""
-    return LLMClient(api_key=key, model=model)
+    prov = st.session_state.get("provider", "anthropic")
+    env_name = {"anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY"}.get(prov, "ANTHROPIC_API_KEY")
+    return LLMClient(api_key=secret(env_name), model=model, provider=prov)
 
 
 # --------------------------------------------------------------------------
@@ -95,30 +107,59 @@ def client_for(model: str) -> LLMClient:
 with st.sidebar:
     st.header("Setup")
 
-    key_in_secrets = False
-    try:
-        key_in_secrets = bool(st.secrets.get("ANTHROPIC_API_KEY", ""))
-    except Exception:
-        key_in_secrets = False
+    prov_keys = list(PROVIDERS)
+    prov_choice = st.selectbox(
+        "Model provider", prov_keys,
+        format_func=lambda k: PROVIDERS[k].label, index=0,
+        help="Gap analysis and ATS scoring need no provider at all. Only the "
+             "tailoring agent and the writing extras call a model.",
+    )
+    st.session_state["provider"] = prov_choice
+    prov = PROVIDERS[prov_choice]
+    st.caption(prov.note)
 
-    if key_in_secrets or os.environ.get("ANTHROPIC_API_KEY"):
-        st.success("API key loaded from secrets.")
+    env_name = {"anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY",
+                "gemini": "GEMINI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY"}[prov_choice]
+
+    have_stored = False
+    try:
+        have_stored = bool(st.secrets.get(env_name, ""))
+    except Exception:
+        have_stored = False
+    have_stored = have_stored or bool(os.environ.get(env_name))
+
+    if have_stored:
+        st.success(f"`{env_name}` loaded from secrets.")
         st.session_state["api_key"] = ""
     else:
         st.session_state["api_key"] = st.text_input(
-            "Anthropic API key", type="password",
-            help="Stored only for this browser session. For a permanent setup put "
-                 "ANTHROPIC_API_KEY in Streamlit secrets.",
+            f"{prov.label} API key", type="password",
+            help=f"Kept only for this browser session. For a permanent setup "
+                 f"put {env_name} in Streamlit secrets.",
         )
+        st.caption(f"Get a key → {prov.console}")
 
-    model = st.selectbox(
-        "Model", [DEFAULT_MODEL, SMART_MODEL], index=0,
-        help="Sonnet is the right default. Opus is worth it for a role you "
-             "really want.",
-    )
+    model_options = ([prov.default_model, SMART_MODEL]
+                     if prov_choice == "anthropic" else [prov.default_model])
+    model = st.selectbox("Model", model_options, index=0)
+    model = st.text_input(
+        "…or type a model name", value=model,
+        help="Provider model names change often. If the app reports an unknown "
+             "model, copy the current name from the provider's docs.",
+    ) or model
+
     rounds = st.slider("Critique rounds", 1, 4, 2,
                        help="Each round is a full critique and revision pass. "
-                            "Two is usually where it stops finding real problems.")
+                            "Two is usually where it stops finding real problems. "
+                            "Drop to 1 if a free tier is rate-limiting you.")
+
+    if prov.free:
+        st.info(
+            "Free-tier models follow the strict rewrite rules less reliably, so "
+            "expect more blocked rewrites. That is the safety net doing its job "
+            "— a blocked rewrite keeps your original wording."
+        )
 
     st.divider()
     st.subheader("Template class file")
@@ -375,7 +416,11 @@ with tab_tailor:
     else:
         cl = client_for(model)
         if not cl.available:
-            st.error("Tailoring needs an Anthropic API key. Add one in the sidebar.")
+            st.error(
+                f"Tailoring needs a {cl.provider.label} API key — add one in the "
+                f"sidebar, or switch to a free provider there. Everything on the "
+                f"Gap analysis tab works without any key."
+            )
         else:
             if st.button("Tailor my resume", type="primary"):
                 bar = st.progress(0.0, text="Starting…")
@@ -477,8 +522,9 @@ with tab_tailor:
                         st.text("· " + line)
                     st.caption(
                         f"{res.usage.calls} model calls · "
-                        f"{res.usage.input_tokens:,} in / {res.usage.output_tokens:,} out · "
-                        f"about ${res.usage.estimated_cost_usd():.3f}"
+                        f"{res.usage.input_tokens:,} in / {res.usage.output_tokens:,} out"
+                        + (f" · about ${res.usage.estimated_cost_usd(cl.provider.in_rate, cl.provider.out_rate):.3f}"
+                           if cl.provider.in_rate else " · free tier")
                     )
 
 

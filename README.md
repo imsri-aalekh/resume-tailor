@@ -87,12 +87,17 @@ original supports it. Untick anything; the download follows your choices.
 2. **Create the app.** Go to <https://share.streamlit.io> → *Create app* → pick
    the repo → main file `app.py` → Deploy.
 
-3. **Add your key.** App settings → **Secrets** → paste:
+3. **Add a key — or don't.** The resume parser, JD analysis, gap report and ATS
+   score all run with no key at all. Only the tailoring agent and the writing
+   extras call a model. When you want those, App settings → **Secrets**:
    ```toml
-   ANTHROPIC_API_KEY = "sk-ant-..."
+   ANTHROPIC_API_KEY  = "sk-ant-..."     # best results, paid
+   GROQ_API_KEY       = "gsk_..."        # free tier, no card
+   GEMINI_API_KEY     = "AIza..."        # free tier via AI Studio
+   OPENROUTER_API_KEY = "sk-or-..."      # free models available
    ```
-   Save. The app restarts and picks it up. You can also paste a key into the
-   sidebar for a one-off session without storing it.
+   Pick the matching provider in the sidebar. Free-tier models trip the rewrite
+   guards more often, which costs you tailoring quality but never safety.
 
 4. **Upload your `.cls`** in the sidebar the first time, so the PDF preview
    matches your real template.
