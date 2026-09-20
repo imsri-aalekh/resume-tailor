@@ -151,6 +151,51 @@ def main() -> int:
     if not ok:
         return 1
 
+    # ---- the .tex handed to the user is the whole deliverable --------------
+    # The PDF is a convenience and needs a LaTeX engine that may not exist.
+    # The .tex must always be produced, must still be a buildable document,
+    # and must differ from the original *only* on the lines that were tailored.
+    from core.latexdoc import verify_template_integrity
+    import difflib
+    for fixture in ("tests/fixtures/customhead_style.tex",
+                    "samples/aalekh_resume.tex"):
+        src = open(os.path.join(ROOT, fixture), encoding="utf-8").read()
+        d = parse(src)
+        edits = {d.bullets[0].bid: "Tailored opening bullet, rewritten for the posting."}
+        sedits = ({d.skill_lines[0].sid: d.skill_lines[0].raw.strip() + ", Kafka"}
+                  if d.skill_lines else {})
+        dr = Draft(round_no=1, bullet_edits=edits, skill_edits=sedits)
+        out = app._final_tex(d, dr, {d.bullets[0].bid: True})
+
+        name = os.path.basename(fixture)
+        problems = verify_template_integrity(d, out, edits, sedits)
+        checks = {
+            f"{name}: a .tex is produced": bool(out.strip()),
+            f"{name}: template untouched outside edits": not problems,
+            f"{name}: preamble byte-identical":
+                out[:out.index("\\begin{document}")] == src[:src.index("\\begin{document}")],
+            f"{name}: still a complete document":
+                out.count("\\begin{document}") == 1 and "\\end{document}" in out,
+            f"{name}: braces stay balanced": out.count("{") == out.count("}"),
+            f"{name}: same number of \\item": out.count("\\item") == src.count("\\item"),
+            f"{name}: re-parses to the same shape":
+                len(parse(out).bullets) == len(d.bullets),
+            f"{name}: the tailored text is actually in it":
+                "Tailored opening bullet" in out,
+        }
+        # only the edited lines moved
+        moved = [l for l in difflib.unified_diff(src.splitlines(), out.splitlines(), n=0)
+                 if l.startswith(("+", "-")) and not l.startswith(("+++", "---"))]
+        checks[f"{name}: only the edited lines differ"] = len(moved) == 2 * (1 + len(sedits))
+
+        for label, cond in checks.items():
+            print(("  PASS" if cond else "  FAIL") + f" — {label}")
+            if not cond:
+                if problems:
+                    print("       ", problems)
+                return 1
+    print("PASS — tailored .tex delivery verified on both templates.")
+
     # ---- second pass: re-run the script with a full result loaded ----------
     # This is where the real rendering code lives: gap rows, diffs, download
     # buttons, parseability. None of it runs on an empty session.
