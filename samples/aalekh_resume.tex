@@ -1,0 +1,111 @@
+%-------------------------
+% Resume in Latex
+% Template: resume-openfont
+%------------------------
+\documentclass[a4paper,11pt]{resume-openfont}
+
+\usepackage[left=0.45in,top=0.4in,right=0.45in,bottom=0.4in]{geometry}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{xcolor}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    pdftitle={Aalekh Srivastava - Resume}
+}
+
+\name{Aalekh Srivastava}
+\address{+91-7870094411 \\ Bangalore, India}
+\address{\href{mailto:aalekh.sri@gmail.com}{aalekh.sri@gmail.com} \\
+\href{https://linkedin.com/in/aalekh-srivastava-80b06910a}{LinkedIn} \\
+\href{https://github.com/imsri-aalekh}{GitHub} \\
+\href{https://leetcode.com/u/aalekhs3}{LeetCode}}
+
+\begin{document}
+
+%----------- EXPERIENCE -----------
+\begin{rSection}{EXPERIENCE}
+
+\textbf{Senior Software Engineer} \hfill Sept 2025 - Present \\
+Edelman Financial Engines \hfill \textit{Bangalore, India}
+\begin{itemize}
+    \item Built and own microservices on the managed-solutions and financial-accounts teams of a wealth management platform serving retail investors.
+    \item Migrated REST APIs from AWS Lambda to ECS, cutting cold-start latency and stabilising p99 response times for account operations.
+    \item Implemented a caching architecture and API versioning strategy across services, reducing redundant downstream calls to vendor systems.
+    \item Built a cluster-wide circuit breaker for Orion and Schwab money-movement API calls, preventing cascading failures during vendor outages.
+    \item Implemented JWT-based authentication across services and built Splunk dashboards for production monitoring and alerting.
+    \item Orchestrated onboarding and submit-trade business flows using AWS Step Functions, replacing brittle sequential processing.
+    \item Manage AWS DataBrew jobs extracting data from Redshift tables and views sourced from Orion, and build downstream jobs on top of them.
+\end{itemize}
+
+\textbf{Senior Software Development Engineer} \hfill June 2025 - Sept 2025 \\
+Freecharge \hfill \textit{Gurugram, India}
+\begin{itemize}
+    \item Built the backend for a Home Loan platform serving 10K+ daily users, owning RESTful APIs for loan applications, KYC and document management.
+    \item Cut loan approval turnaround time by 30\% by automating manual verification steps in the underwriting pipeline.
+    \item Led the integration of 3 third-party credit bureaus, standardising credit-pull responses behind a single internal contract.
+    \item Partnered with product, analytics and compliance teams to design a real-time loan offer engine.
+\end{itemize}
+
+\textbf{Software Developer} \hfill June 2021 - May 2025 \\
+Amdocs \hfill \textit{Gurugram, India}
+\begin{itemize}
+    \item Built APIs integrating Amdocs OMS with Invoicing, Billing, CMS and ESB systems for a large telecom operator.
+    \item Unified bill presentment across channels for VIL, saving Rs. 22 lakh per month in call-center costs.
+    \item Developed, tested and deployed features for Amdocs CES 7.5 billing software across the Rater, ABMG and RLC modules.
+\end{itemize}
+
+\end{rSection}
+
+%----------- PROJECTS -----------
+\begin{rSection}{PROJECTS}
+
+\textbf{XAI Financial Advisor (PCA-MSE)} \hfill 2025 - 2026 \\
+\href{https://github.com/imsri-aalekh/xai-financial-advisor}{github.com/imsri-aalekh/xai-financial-advisor} \hfill \textit{M.Tech Dissertation}
+\begin{itemize}
+    \item Built an explainable AI advisor for financial portfolio recommendations, combining PCA-based factor reduction with MSE-driven model selection.
+    \item Deployed the model as an interactive Streamlit application for scenario analysis and explanation of individual recommendations.
+\end{itemize}
+
+\textbf{Human Activity Recognition} \hfill Mar 2020 - Apr 2020 \\
+\textit{Academic Project}
+\begin{itemize}
+    \item Compared classical machine learning models against an LSTM network on smartphone sensor data for activity classification.
+    \item Engineered time and frequency domain features from raw accelerometer and gyroscope signals to improve classification accuracy.
+\end{itemize}
+
+\end{rSection}
+
+%----------- SKILLS -----------
+\begin{rSection}{TECHNICAL SKILLS}
+
+\begin{tabular}{ @{} >{\bfseries}l @{\hspace{4ex}} l }
+Languages & Java, Python, C++, Kotlin, Shell Scripting, SQL \\
+Frameworks & Spring, Spring Boot, REST API, Microservices, Apache Tomcat \\
+Cloud \& Tools & AWS, Docker, Git, Unix, LaTeX \\
+Databases & Oracle SQL, OracleDB, MongoDB, NoSQL \\
+Concepts & OOPs, Apache Kafka, System Design \\
+\end{tabular}
+
+\end{rSection}
+
+%----------- EDUCATION -----------
+\begin{rSection}{EDUCATION}
+
+\textbf{M.Tech in Artificial Intelligence \& Machine Learning} \hfill Oct 2024 - Oct 2026 \\
+BITS Pilani (WILP) \hfill \textit{CGPA: 8.53/10}
+
+\textbf{B.E. in Computer Science and Engineering} \hfill 2017 - 2021 \\
+Birla Institute of Technology, Mesra, Ranchi \hfill \textit{CGPA: 8.63/10}
+
+\textbf{Intermediate} \hfill 2014 - 2016 \\
+Jawahar Vidya Mandir Shyamali, Ranchi \hfill \textit{90.8\%}
+
+\textbf{Matriculation} \hfill 2008 - 2014 \\
+St. Joseph's School, Jhajha \hfill \textit{94.5\%}
+
+\end{rSection}
+
+\end{document}

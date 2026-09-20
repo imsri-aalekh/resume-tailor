@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+.venv/
+venv/
+*.pdf
+*.aux
+*.log
+*.out
+*.fls
+*.fdb_latexmk
+.DS_Store

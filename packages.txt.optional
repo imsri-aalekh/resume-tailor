@@ -1,0 +1,12 @@
+# OPTIONAL — rename to `packages.txt` only if you want server-side PDF preview.
+#
+# Read this first: these apt packages are roughly 1.5 GB installed. Streamlit
+# Community Cloud will often time out or run out of disk during the build, and
+# you will get a broken app rather than a slow one. The recommended setup is to
+# leave this file alone and compile in Overleaf, where your real .cls already
+# lives and the output is guaranteed to match your current resume.
+texlive-latex-recommended
+texlive-latex-extra
+texlive-fonts-recommended
+texlive-xetex
+latexmk

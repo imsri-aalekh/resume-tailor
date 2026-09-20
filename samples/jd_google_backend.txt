@@ -1,0 +1,32 @@
+Senior Software Engineer, Backend Infrastructure
+Google — Bengaluru, Karnataka, India
+
+About the job
+As a Senior Software Engineer at Google, you will design, build and operate
+large-scale distributed backend systems that serve millions of users. You will
+work across the full stack of our services platform and partner with product and
+infrastructure teams to ship reliable, high-throughput services.
+
+Minimum qualifications
+- Bachelor's degree in Computer Science or equivalent practical experience.
+- 5 years of experience with software development in Java, Go or C++.
+- 3 years of experience building distributed systems and microservices.
+- Experience with data structures and algorithms, and strong system design skills.
+- Experience designing and operating RESTful APIs in production.
+
+Preferred qualifications
+- Master's degree in Computer Science or a related technical field.
+- Experience with event-driven architectures and stream processing using Apache Kafka.
+- Experience with Kubernetes, Docker and CI/CD pipelines.
+- Experience with cloud platforms (GCP, AWS) and infrastructure as code (Terraform).
+- Experience with observability tooling, monitoring and incident response / on-call.
+- Experience mentoring junior engineers and leading technical design reviews.
+- Experience with SQL and NoSQL datastores at scale, and performance tuning.
+
+Responsibilities
+- Design and implement highly available, low-latency backend microservices.
+- Own services end to end, including on-call, monitoring and incident response.
+- Drive technical design reviews and mentor junior engineers on the team.
+- Collaborate with cross-functional partners to define APIs and service contracts.
+- Improve reliability through caching, circuit breaking and capacity planning.
+- Build and maintain CI/CD pipelines and automated testing for your services.

@@ -1,0 +1,29 @@
+\documentclass[letterpaper,11pt]{article}
+\usepackage{titlesec}
+\usepackage{enumitem}
+\newcommand{\resumeItem}[1]{\item\small{#1 \vspace{-2pt}}}
+\newcommand{\resumeSubheading}[4]{\item\small{\textbf{#1} & #2 \\ \textit{#3} & \textit{#4}}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}}
+\begin{document}
+\section{Experience}
+  \resumeSubheading{Acme Corp}{Bengaluru, India}{Senior Software Engineer}{Jan 2023 -- Present}
+  \resumeItemListStart
+    \resumeItem{Designed a payments ledger service in Java handling 2M daily transactions.}
+    \resumeItem{Reduced reconciliation time by 45\% by replacing nightly batch with Kafka streams.}
+  \resumeItemListEnd
+
+  \resumeSubheading{Globex}{Pune, India}{Software Engineer}{Jul 2020 -- Dec 2022}
+  \resumeItemListStart
+    \resumeItem{Built internal REST APIs consumed by 12 downstream teams.}
+  \resumeItemListEnd
+
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}{: Java, Python, Go} \\
+     \textbf{Frameworks}{: Spring Boot, Hibernate} \\
+     \textbf{Tools}{: Docker, Kubernetes, Git} \\
+    }}
+ \end{itemize}
+\end{document}

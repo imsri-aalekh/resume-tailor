@@ -1,0 +1,5 @@
+streamlit>=1.40,<2
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.1
+pdfplumber>=0.11
