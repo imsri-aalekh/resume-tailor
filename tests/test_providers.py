@@ -205,6 +205,29 @@ def main():
               "made no progress" in str(exc), type(exc).__name__)
     reset_pacing()
 
+    print("\n== free-tier model choices ==")
+    # Groq decommissioned llama-3.3-70b-versatile on 16 Aug 2026 and moved the
+    # rest of the Llama family to Enterprise, which broke the default silently:
+    # the key was valid, the model was not. Every free provider must therefore
+    # name a model its free tier can actually call, and offer alternates for
+    # when that one churns too.
+    for _k, _pr in PROVIDERS.items():
+        if not _pr.free or _pr.local:
+            continue
+        check(f"{_k}: names a default model", bool(_pr.default_model))
+        # Scoped to Groq on purpose: these IDs are retired *on Groq*.
+        # OpenRouter serves its own Llama 3.3 and is unaffected, so a blanket
+        # substring ban here would be a false alarm.
+        if _k == "groq":
+            check(f"{_k}: default is not a model Groq retired",
+                  "llama-3.3-70b" not in _pr.default_model
+                  and "llama-3.1-70b" not in _pr.default_model,
+                  _pr.default_model)
+            check(f"{_k}: offers alternates, since this one churned before",
+                  len(_pr.alt_models) >= 1, str(_pr.alt_models))
+        check(f"{_k}: any alternates are distinct from the default",
+              _pr.default_model not in _pr.alt_models)
+
     print("\n== reasoning models ==")
     # granite4.2 and friends put their deliberation in `reasoning` and can
     # return content="" when max_tokens runs out mid-thought. Retrying that is

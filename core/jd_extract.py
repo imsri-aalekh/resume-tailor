@@ -76,6 +76,9 @@ class JDAnalysis:
     soft_signals: List[str] = field(default_factory=list)
     red_flags: List[str] = field(default_factory=list)
     used_llm: bool = False
+    # Why the model pass did not happen, when a client was supplied. Empty
+    # means it either succeeded or was never attempted.
+    llm_error: str = ""
     raw_text: str = ""
 
     def must_haves(self) -> List[Requirement]:
@@ -209,10 +212,15 @@ def analyse(jd_text: str, client: Optional[LLMClient] = None, *,
             SYSTEM, PROMPT.format(jd=jd_text[:24000]),
             max_tokens=3000, temperature=0.0, label="jd_extract",
         )
-    except LLMError:
+    except LLMError as exc:
+        # Swallowing this made a failed call indistinguishable from "no key",
+        # so the UI told people to add a key they already had. Carry the reason.
+        base.llm_error = str(exc)
         return base
 
     if not isinstance(data, dict):
+        base.llm_error = ("The model returned something that was not a JSON "
+                          "object, so the offline analysis was used instead.")
         return base
 
     a = JDAnalysis(raw_text=jd_text, used_llm=True)
