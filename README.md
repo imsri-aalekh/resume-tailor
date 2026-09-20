@@ -99,6 +99,34 @@ original supports it. Untick anything; the download follows your choices.
    Pick the matching provider in the sidebar. Free-tier models trip the rewrite
    guards more often, which costs you tailoring quality but never safety.
 
+   On a **deployed** app these are the only options. Locally there is a better
+   one — see below.
+
+### Running it locally against Ollama (no key, no quota, nothing leaves the laptop)
+
+The default provider is **Ollama**, which runs the model on your own machine.
+No API key, no rate limit, and the resume text never leaves the laptop — which
+matters, because bullets carry employer and vendor names.
+
+```bash
+brew install --cask ollama        # or https://ollama.com/download
+ollama serve &                    # or just open the Ollama app
+ollama pull granite4.2:8b         # ~5 GB, the app's default
+
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/streamlit run app.py
+```
+
+The sidebar confirms Ollama is up and lists the models you have actually
+pulled. Any Ollama model works — pick it from the dropdown or type its name.
+`granite4.2:8b` is the default because it holds up on structured JSON output,
+which is what the writer/critic loop runs on; a weaker local model means more
+blocked rewrites, not worse ones.
+
+Ollama is **local only**. Streamlit Cloud has no Ollama on `localhost`, so a
+deployed app must use one of the hosted providers above. `preflight.py` says so
+before you push.
+
 4. **Upload your `.cls`** in the sidebar the first time, so the PDF preview
    matches your real template.
 

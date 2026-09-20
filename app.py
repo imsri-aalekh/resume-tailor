@@ -25,7 +25,8 @@ from core.diffing import change_stats, to_html, unified
 from core.jd_extract import JDAnalysis, analyse
 from core.jd_fetch import JobPosting, fetch
 from core.latexdoc import ResumeDoc, parse as parse_tex, render
-from core.llm import PROVIDERS, LLMClient, SMART_MODEL
+from core.llm import (PROVIDERS, ENV_VARS, LLMClient, SMART_MODEL,
+                      DEFAULT_PROVIDER, installed_models, local_server_up)
 from core.matcher import GapReport, LEVEL_LABEL, build_report
 from core.render import available_engines, compile_tex, shim_class
 
@@ -92,12 +93,39 @@ def secret(name: str) -> str:
         return ""
 
 
+def _initial_provider() -> str:
+    """Which provider the sidebar should open on.
+
+    Local-first when a local server is actually there — that is the best
+    experience and costs nothing. But the same code is deployed to Streamlit
+    Cloud, where localhost:11434 is the container itself and nothing is
+    listening. Opening on a dead provider there would make every visitor
+    diagnose and switch by hand, so fall back to whichever hosted provider
+    already has a key in secrets.
+    """
+    # No st.cache_data: local_server_up already caches its probe for a few
+    # seconds, the secret lookups are dict reads, and a Streamlit cache here
+    # would pin a stale answer when you start Ollama mid-session.
+    if local_server_up(DEFAULT_PROVIDER):
+        return DEFAULT_PROVIDER
+    for key, var in ENV_VARS.items():
+        if not var:
+            continue
+        if os.environ.get(var):
+            return key
+        try:
+            if st.secrets.get(var, ""):
+                return key
+        except Exception:
+            pass
+    return DEFAULT_PROVIDER
+
+
 def client_for(model: str) -> LLMClient:
-    prov = st.session_state.get("provider", "anthropic")
-    env_name = {"anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY",
-                "gemini": "GEMINI_API_KEY",
-                "openrouter": "OPENROUTER_API_KEY"}.get(prov, "ANTHROPIC_API_KEY")
-    return LLMClient(api_key=secret(env_name), model=model, provider=prov)
+    prov = st.session_state.get("provider", DEFAULT_PROVIDER)
+    env_name = ENV_VARS.get(prov, "ANTHROPIC_API_KEY")
+    key = secret(env_name) if env_name else ""
+    return LLMClient(api_key=key, model=model, provider=prov)
 
 
 # --------------------------------------------------------------------------
@@ -110,7 +138,9 @@ with st.sidebar:
     prov_keys = list(PROVIDERS)
     prov_choice = st.selectbox(
         "Model provider", prov_keys,
-        format_func=lambda k: PROVIDERS[k].label, index=0,
+        format_func=lambda k: PROVIDERS[k].label,
+        index=prov_keys.index(_pick if (_pick := _initial_provider()) in prov_keys
+                              else DEFAULT_PROVIDER),
         help="Gap analysis and ATS scoring need no provider at all. Only the "
              "tailoring agent and the writing extras call a model.",
     )
@@ -118,30 +148,47 @@ with st.sidebar:
     prov = PROVIDERS[prov_choice]
     st.caption(prov.note)
 
-    env_name = {"anthropic": "ANTHROPIC_API_KEY", "groq": "GROQ_API_KEY",
-                "gemini": "GEMINI_API_KEY",
-                "openrouter": "OPENROUTER_API_KEY"}[prov_choice]
+    env_name = ENV_VARS.get(prov_choice, "")
 
-    have_stored = False
-    try:
-        have_stored = bool(st.secrets.get(env_name, ""))
-    except Exception:
-        have_stored = False
-    have_stored = have_stored or bool(os.environ.get(env_name))
-
-    if have_stored:
-        st.success(f"`{env_name}` loaded from secrets.")
+    local_models: list = []
+    if prov.local:
+        # No key to collect. What matters instead is whether the server is up
+        # and which models are actually pulled.
         st.session_state["api_key"] = ""
+        local_models = installed_models(prov_choice)
+        if local_models:
+            st.success(f"Ollama is running · {len(local_models)} model(s) local.")
+        else:
+            st.warning("Ollama is not responding on localhost:11434.")
+            st.code("ollama serve\nollama pull " + prov.default_model, language="bash")
     else:
-        st.session_state["api_key"] = st.text_input(
-            f"{prov.label} API key", type="password",
-            help=f"Kept only for this browser session. For a permanent setup "
-                 f"put {env_name} in Streamlit secrets.",
-        )
-        st.caption(f"Get a key → {prov.console}")
+        have_stored = False
+        try:
+            have_stored = bool(st.secrets.get(env_name, ""))
+        except Exception:
+            have_stored = False
+        have_stored = have_stored or bool(os.environ.get(env_name))
 
-    model_options = ([prov.default_model, SMART_MODEL]
-                     if prov_choice == "anthropic" else [prov.default_model])
+        if have_stored:
+            st.success(f"`{env_name}` loaded from secrets.")
+            st.session_state["api_key"] = ""
+        else:
+            st.session_state["api_key"] = st.text_input(
+                f"{prov.label} API key", type="password",
+                help=f"Kept only for this browser session. For a permanent setup "
+                     f"put {env_name} in Streamlit secrets.",
+            )
+            st.caption(f"Get a key → {prov.console}")
+
+    if prov.local:
+        # Offer what is actually pulled; the default first if it is there.
+        model_options = (sorted(local_models,
+                                key=lambda m: m != prov.default_model)
+                         or [prov.default_model])
+    elif prov_choice == "anthropic":
+        model_options = [prov.default_model, SMART_MODEL]
+    else:
+        model_options = [prov.default_model]
     model = st.selectbox("Model", model_options, index=0)
     model = st.text_input(
         "…or type a model name", value=model,
@@ -154,7 +201,15 @@ with st.sidebar:
                             "Two is usually where it stops finding real problems. "
                             "Drop to 1 if a free tier is rate-limiting you.")
 
-    if prov.free:
+    if prov.local:
+        st.info(
+            "Small local models follow the strict rewrite rules less reliably "
+            "than a frontier model, so expect more blocked rewrites. That is "
+            "the safety net doing its job — a blocked rewrite keeps your "
+            "original wording, never a fabricated one. A larger local model, "
+            "or more RAM, buys back most of the difference."
+        )
+    elif prov.free:
         st.info(
             "Free-tier models follow the strict rewrite rules less reliably, so "
             "expect more blocked rewrites. That is the safety net doing its job "
@@ -334,10 +389,28 @@ with tab_gaps:
     if not doc or not job or not job.ok:
         st.info("Load a resume and a job posting on the Inputs tab first.")
     else:
+        cl = client_for(model)
+        # The gap report itself never needs a model. The only optional model
+        # call here refines the JD's requirement list — worth a second against
+        # a hosted endpoint, but a local 8B takes minutes, which turns the tab
+        # that is supposed to be instant into the slowest one in the app.
+        use_llm_jd = False
+        if cl.available:
+            use_llm_jd = st.checkbox(
+                "Use the model to refine the job requirements (slower)",
+                value=not cl.provider.local,
+                help=("The gap report, evidence grading and ATS score are all "
+                      "computed offline and need no model. This option only "
+                      "improves how the posting's requirements are extracted. "
+                      "On a local model it costs minutes for a modest gain — "
+                      "the tailoring step re-reads the posting anyway."),
+            )
+
         if st.button("Analyse the gap", type="primary"):
-            cl = client_for(model)
-            with st.spinner("Reading the posting for what it actually demands…"):
-                jd = analyse(job.text, cl if cl.available else None,
+            spin = ("Reading the posting with the model…" if use_llm_jd
+                    else "Reading the posting for what it actually demands…")
+            with st.spinner(spin):
+                jd = analyse(job.text, cl if use_llm_jd else None,
                              title_hint=job.title, company_hint=job.company)
             report = build_report(doc, jd, st.session_state.get("declared", []))
             st.session_state["jd"] = jd
@@ -418,8 +491,8 @@ with tab_tailor:
         if not cl.available:
             st.error(
                 f"Tailoring needs a {cl.provider.label} API key — add one in the "
-                f"sidebar, or switch to a free provider there. Everything on the "
-                f"Gap analysis tab works without any key."
+                f"sidebar, or switch to Ollama (local, free, no key) there. "
+                f"Everything on the Gap analysis tab works without any key."
             )
         else:
             if st.button("Tailor my resume", type="primary"):
@@ -524,7 +597,9 @@ with tab_tailor:
                         f"{res.usage.calls} model calls · "
                         f"{res.usage.input_tokens:,} in / {res.usage.output_tokens:,} out"
                         + (f" · about ${res.usage.estimated_cost_usd(cl.provider.in_rate, cl.provider.out_rate):.3f}"
-                           if cl.provider.in_rate else " · free tier")
+                           if cl.provider.in_rate
+                           else (" · local, no cost" if cl.provider.local
+                                 else " · free tier"))
                     )
 
 

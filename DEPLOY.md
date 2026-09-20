@@ -82,6 +82,56 @@ The app reads the key from secrets automatically — the sidebar will confirm
 which variable it found rather than showing a key box. Pick the matching
 provider in the sidebar dropdown.
 
+## The split: Groq in the cloud, Ollama on your laptop
+
+**Ollama cannot run on Streamlit Community Cloud.** Not a configuration
+problem — each app gets roughly **1 GB of RAM and no GPU**, and an 8B model
+needs about 6 GB resident just to hold its weights. The container would be
+killed on first load. Ollama also serves on `localhost:11434`, which up there
+is the container itself, where nothing is listening.
+
+So the app runs in two modes from one codebase:
+
+| | Local | Deployed |
+|---|---|---|
+| Provider | Ollama | Groq |
+| Key | none | `GROQ_API_KEY` in secrets |
+| Cost | free, unmetered | free tier, ~25 req/min |
+| Your resume | never leaves the laptop | bullet text goes to Groq |
+
+**You do not have to switch anything by hand.** The sidebar opens on Ollama
+when a local server is actually responding, and otherwise falls back to
+whichever hosted provider has a key in secrets. Same code, right default in
+both places. You can always override it in the dropdown.
+
+To deploy this way:
+
+1. Get a free key at <https://console.groq.com/keys> — no card required.
+2. Streamlit Cloud → your app → **Settings → Secrets**:
+   ```toml
+   GROQ_API_KEY = "gsk_..."
+   ```
+3. That is all. The app opens on Groq for visitors and on Ollama for you.
+
+`python3 preflight.py` warns you before every push if the default provider is
+still a local one.
+
+### If you specifically want Ollama models in the deployed app
+
+Two ways, neither of them Community Cloud:
+
+- **Ollama Cloud** — `https://ollama.com/v1/chat/completions` with an
+  `OLLAMA_API_KEY`. Same OpenAI-compatible shape as the local server, so it
+  slots into `PROVIDERS` in about ten lines. Free starter credits on a limited
+  model set, then pay-per-token. <https://ollama.com/pricing>
+- **Host the whole app somewhere with real memory** — Hugging Face Spaces
+  (16 GB on the free CPU tier), Fly.io, Render, or a VPS — and run Ollama
+  beside Streamlit in the same container.
+
+A third option, tunnelling your laptop's Ollama to the internet with
+Cloudflare Tunnel or ngrok, works but exposes an unauthenticated inference
+server and needs the laptop awake. Demo-grade, not deployment-grade.
+
 **You can deploy with no key at all.** Resume parsing, JD analysis, the gap
 report and ATS scoring all run without one. Only the tailoring agent and the
 writing extras call a model. Deploying keyless first is the fastest way to
@@ -91,6 +141,7 @@ check the parser reads your resume correctly.
 
 | Provider | Cost | Key from |
 |---|---|---|
+| **Ollama** | **Free, local only — not usable on Cloud** | <https://ollama.com/download> |
 | Anthropic | Paid — a Claude subscription does **not** include API credit; add credit in Billing | <https://console.anthropic.com> |
 | Groq | Free tier, no card, rate limited | <https://console.groq.com/keys> |
 | Google Gemini | Free tier via AI Studio | <https://aistudio.google.com/apikey> |

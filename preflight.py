@@ -18,6 +18,16 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PROBLEMS: list[str] = []
 NOTES: list[str] = []
 
+# Directories that are never part of what gets deployed. Kept in one place:
+# these walks used to disagree, and the import scan happily parsed every .py
+# inside .venv — thousands of files, and third-party imports reported as
+# "missing from requirements.txt".
+# Only bulk directories that are never deployed. Deliberately NOT .streamlit:
+# that is exactly where a secrets.toml with a live key would sit, and the leak
+# scan below has to be able to see it.
+SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "env", "node_modules",
+             ".mypy_cache", ".pytest_cache", ".ruff_cache", "site-packages"}
+
 
 def fail(msg: str) -> None:
     PROBLEMS.append(msg)
@@ -71,8 +81,7 @@ else:
 key_re = re.compile(r"sk-ant-[A-Za-z0-9_\-]{20,}")
 leaks = []
 for dirpath, dirnames, filenames in os.walk(ROOT):
-    dirnames[:] = [d for d in dirnames if d not in
-                   {".git", "__pycache__", ".venv", "venv", "node_modules"}]
+    dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
     for fn in filenames:
         if fn.endswith((".png", ".pdf", ".zip", ".jpg")):
             continue
@@ -109,7 +118,7 @@ LOCAL = {"core", "app"}
 
 missing = set()
 for dirpath, dirnames, filenames in os.walk(ROOT):
-    dirnames[:] = [d for d in dirnames if d not in {".git", "__pycache__", "tests"}]
+    dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS | {"tests"}]
     for fn in filenames:
         if not fn.endswith(".py"):
             continue
@@ -141,7 +150,7 @@ print("\nRepo size")
 big = []
 total = 0
 for dirpath, dirnames, filenames in os.walk(ROOT):
-    dirnames[:] = [d for d in dirnames if d not in {".git", "__pycache__"}]
+    dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
     for fn in filenames:
         fp = os.path.join(dirpath, fn)
         try:
@@ -175,6 +184,28 @@ try:
     ok("streamlit importable locally")
 except ImportError:
     note("streamlit not installed here — fine, Cloud installs it from requirements.txt")
+
+# -------------------------------------------------------------- provider ----
+print("\nModel provider")
+try:
+    from core.llm import PROVIDERS, DEFAULT_PROVIDER
+    _p = PROVIDERS[DEFAULT_PROVIDER]
+    if _p.local:
+        _hosted = [k for k, v in PROVIDERS.items() if not v.local]
+        note(f"default provider is '{DEFAULT_PROVIDER}' — local to this "
+             f"machine. On Streamlit Cloud nothing listens there, so the "
+             f"sidebar falls back to whichever hosted provider has a key in "
+             f"secrets ({', '.join(_hosted)}). Put at least one key in Cloud "
+             f"secrets or the deployed app opens with no working provider; "
+             f"GROQ_API_KEY is the free one. Local runs are unaffected.")
+    else:
+        ok(f"default provider '{DEFAULT_PROVIDER}' is hosted — deployable as-is")
+    for _k, _pr in PROVIDERS.items():
+        if _pr.free and not _pr.local and not _pr.rpm:
+            fail(f"free provider '{_k}' declares no rpm — requests cannot be paced")
+    ok("every metered free provider declares a per-minute budget")
+except Exception as exc:                      # noqa: BLE001
+    fail(f"provider table did not load: {type(exc).__name__}: {exc}")
 
 # ---------------------------------------------------------------- python ----
 print("\nRuntime")

@@ -142,8 +142,25 @@ class SkillLine:
     section: str
 
     def values(self) -> List[str]:
+        """Split on commas that separate skills — not the ones inside a
+        parenthesised gloss like "Python (Pandas, Numpy)", which names one
+        skill, not three."""
         raw = strip_latex(self.raw).lstrip(":-").strip()
-        return [v.strip(" :") for v in re.split(r"[,;]", raw) if v.strip(" :")]
+        out: List[str] = []
+        buf: List[str] = []
+        depth = 0
+        for ch in raw:
+            if ch in "([{":
+                depth += 1
+            elif ch in ")]}":
+                depth = max(0, depth - 1)
+            if ch in ",;" and depth == 0:
+                out.append("".join(buf))
+                buf = []
+            else:
+                buf.append(ch)
+        out.append("".join(buf))
+        return [v.strip(" :") for v in out if v.strip(" :")]
 
 
 @dataclass
@@ -166,6 +183,8 @@ class ResumeDoc:
     doc_class: str = ""
     engine_hint: str = "pdflatex"
     warnings: List[str] = field(default_factory=list)
+    # Custom \newcommand heading macros discovered in the preamble.
+    heading_macros: List[str] = field(default_factory=list)
 
     # -- lookups ---------------------------------------------------------
     def bullet(self, bid: str) -> Optional[Bullet]:
@@ -246,9 +265,51 @@ def normalize_section(name: str) -> str:
     return clean or "other"
 
 
-def _find_sections(source: str, scan: str) -> List[Section]:
+# A \newcommand whose body both takes an argument and *looks like* a heading:
+# bold or large text, or a rule. Plenty of resumes roll their own heading macro
+# instead of using \section, and a fixed list of macro names cannot keep up
+# with them.
+_NEWCOMMAND_RE = re.compile(
+    r"\\(?:newcommand|renewcommand|providecommand)\s*\*?\s*"
+    r"\{?\s*\\([A-Za-z@]+)\s*\}?\s*\[\s*1\s*\]\s*(?:\[[^\]]*\])?\s*\{"
+)
+# Deliberately excludes \vspace: nearly every resume macro nudges vertical
+# space, including the bullet macros, so it says nothing about being a heading.
+_HEADING_BODY_RE = re.compile(
+    r"\\(?:textbf|bfseries|section|Large|large|LARGE|scshape|uppercase|MakeUppercase"
+    r"|underline|hrule|rule|titlerule|sectionfont)\b"
+)
+# A macro that emits a list item is a bullet macro, whatever else it does.
+_ITEMISH_RE = re.compile(r"\\(?:item|resumeItem|begin\s*\{\s*itemize)\b")
+
+
+def _heading_macros(full: str) -> List[str]:
+    r"""Names of single-argument macros defined in the preamble that behave like
+    section headings, e.g. ``\newcommand{\sectionhead}[1]{\textbf{#1}}``."""
+    found: List[str] = []
+    for m in _NEWCOMMAND_RE.finditer(full):
+        name = m.group(1)
+        if name in {"item", "bf", "it"} or "item" in name.lower():
+            continue
+        close = match_brace(full, m.end() - 1)
+        if close == -1:
+            continue
+        body = full[m.end() : close - 1]
+        if "#1" not in body or _ITEMISH_RE.search(body):
+            continue
+        if _HEADING_BODY_RE.search(body):
+            found.append(name)
+    return found
+
+
+def _find_sections(source: str, scan: str, extra_macros: Optional[List[str]] = None) -> List[Section]:
     hits: List[Tuple[int, int, str]] = []
-    for pat in _SECTION_PATTERNS:
+    patterns = list(_SECTION_PATTERNS)
+    if extra_macros:
+        patterns.append(re.compile(
+            r"\\(" + "|".join(re.escape(n) for n in sorted(set(extra_macros))) + r")\s*\{"
+        ))
+    for pat in patterns:
         for m in pat.finditer(scan):
             brace = m.end() - 1
             close = match_brace(scan, brace)
@@ -305,6 +366,14 @@ _BULLET_STOP_RE = re.compile(
 def _find_bullets(source: str, scan: str, sections: List[Section]) -> List[Bullet]:
     bullets: List[Bullet] = []
     claimed: List[Tuple[int, int]] = []
+
+    # A \item inside the skills section is a skills row, not an experience
+    # bullet. Leaving it to _find_skill_lines keeps one span under one editor —
+    # otherwise both a bullet edit and a skill edit can target the same offsets
+    # and render() rejects the overlapping patch.
+    for _sec in sections:
+        if _sec.norm == "skills":
+            claimed.append((_sec.body_start, _sec.body_end))
 
     def overlaps(a: int, b: int) -> bool:
         return any(not (b <= s or a >= e) for s, e in claimed)
@@ -443,6 +512,34 @@ def _find_entries(source: str, scan: str, sections: List[Section],
                           dates=right, start=abs_start, end=abs_start + len(line))
                 )
 
+    # (c) a bold run at the start of a line, with or without dates. Plenty of
+    # plain `article` resumes separate org from dates with \quad | \quad and
+    # end the line with \\, so there is no \hfill for (b) to find. Project
+    # headers often carry no date at all.
+    if not entries:
+        for sec in sections:
+            if sec.norm not in {"experience", "projects", "education"}:
+                continue
+            body = scan[sec.body_start : sec.body_end]
+            for lm in re.finditer(r"^[ \t]*\\(?:textbf|textsc|bf)\s*\{[^\n]*$",
+                                  body, re.MULTILINE):
+                line = lm.group(0)
+                plain = strip_latex(line).strip()
+                if len(plain) < 3:
+                    continue
+                abs_start = sec.body_start + lm.start()
+                dates = ""
+                dm = _DATE_RE.search(plain)
+                if dm:
+                    dates = plain[dm.start():].strip(" ,|\\")
+                # everything left of the first separator is the organisation
+                head = re.split(r"\||\u2014|--|\s{2,}", plain)[0].strip(" ,:|")
+                entries.append(
+                    Entry(key="", section=sec.norm, label=head or plain[:60],
+                          org=head, title=head, dates=dates,
+                          start=abs_start, end=abs_start + len(line))
+                )
+
     entries.sort(key=lambda e: e.start)
     # assign section + key, then attach bullets to the nearest preceding entry
     for i, e in enumerate(entries, 1):
@@ -483,8 +580,13 @@ _SKILL_ROW_BOLD = re.compile(
     r"\\(?:textbf|textit|bf)\s*\{(?P<label>[^{}]{2,40})\}"
     r"\s*\{?\s*[:\-]?\s*(?P<vals>[^\n{}]*?)\s*\}?\s*(?=\\\\|\n|$)"
 )
-_SKILL_ROW_ITEM = re.compile(r"^\s*(?P<label>[A-Z][A-Za-z /&+#.-]{2,40}?)\s*:\s*(?P<vals>[^\n]+)$",
-                             re.MULTILINE)
+# "Languages and Tools: Base SAS, ..." — optionally behind an \item, which is
+# how most plain `article` resumes lay their skills section out.
+_SKILL_ROW_ITEM = re.compile(
+    r"^\s*(?:\\item\b\s*(?:\[[^\]]*\])?\s*)?"
+    r"(?P<label>[A-Z][A-Za-z /&+#.-]{2,40}?)\s*:\s*(?P<vals>[^\n]+)$",
+    re.MULTILINE,
+)
 
 
 def _find_skill_lines(source: str, scan: str, sections: List[Section]) -> List[SkillLine]:
@@ -556,7 +658,10 @@ def parse(tex: str) -> ResumeDoc:
        re.search(r"\\setmainfont", full):
         doc.engine_hint = "xelatex"
 
-    doc.sections = _find_sections(tex, scan)
+    # Heading macros are declared in the preamble, which `scan` has blanked out,
+    # so they have to be read from the unmasked source.
+    doc.heading_macros = _heading_macros(full)
+    doc.sections = _find_sections(tex, scan, doc.heading_macros)
     doc.bullets = _find_bullets(tex, scan, doc.sections)
     doc.entries = _find_entries(tex, scan, doc.sections, doc.bullets)
     doc.skill_lines = _find_skill_lines(tex, scan, doc.sections)

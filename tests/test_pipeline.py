@@ -20,7 +20,7 @@ from core.jd_extract import heuristic_analysis
 from core.latexdoc import parse, render, verify_template_integrity
 from core.llm import StubLLM
 from core.matcher import build_report
-from core.render import compile_tex, shim_class
+from core.render import compile_tex, shim_class, available_engines
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -202,8 +202,15 @@ def main():
     check("diff html renders", "<span" in to_html(ch.original, ch.tailored))
 
     print("\n== pdf ==")
-    r = compile_tex(best.tex, support_files={"resume-openfont.cls": shim_class("resume-openfont").encode()})
-    check("tailored tex compiles", r.ok, r.friendly_error() if not r.ok else f"{len(r.pdf)} bytes")
+    # The suite is documented as running with no LaTeX engine installed. The
+    # .tex is the deliverable; the PDF is a convenience that needs pdflatex.
+    # Skip rather than fail, or the whole suite goes red on a clean machine.
+    if not available_engines():
+        print("  [SKIP] tailored tex compiles — no LaTeX engine on this machine")
+    else:
+        r = compile_tex(best.tex, support_files={"resume-openfont.cls": shim_class("resume-openfont").encode()})
+        check("tailored tex compiles", r.ok,
+              r.friendly_error() if not r.ok else f"{len(r.pdf)} bytes")
 
     print("\n" + "=" * 62)
     if FAILS:

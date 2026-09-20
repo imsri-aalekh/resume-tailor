@@ -36,6 +36,12 @@ CASES = [
     (os.path.join(ROOT, "tests", "fixtures", "jake_style.tex"), 3, 3,
      ["vspace", "#1", "resumeItemListStart"]),
     (os.path.join(ROOT, "tests", "fixtures", "plain_style.tex"), 3, 2, []),
+    # A real resume that broke every one of these checks: it defines its own
+    # \sectionhead macro instead of using \section, and lays its skills out as
+    # "\item Label: a, b". Before the parser learned both, this file produced
+    # zero sections, zero skill rows and zero entries — while still passing the
+    # byte-identity check, which is why that check alone is not enough.
+    (os.path.join(ROOT, "tests", "fixtures", "customhead_style.tex"), 18, 3, []),
 ]
 
 

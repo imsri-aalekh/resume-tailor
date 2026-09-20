@@ -47,9 +47,22 @@ class Provider:
     in_rate: float = 0.0         # USD per million input tokens
     out_rate: float = 0.0
     note: str = ""
+    rpm: int = 0                 # free-tier requests per minute; 0 = unmetered
+    local: bool = False          # runs on this machine; needs no API key
+    no_think: bool = False       # ask reasoning models to skip the thinking pass
 
 
 PROVIDERS: Dict[str, Provider] = {
+    "ollama": Provider(
+        key="ollama", label="Ollama (local, free)",
+        url="http://localhost:11434/v1/chat/completions",
+        fmt="openai", auth="none",
+        default_model="granite4.2:8b",
+        console="https://ollama.com/download",
+        free=True, json_mode=True, local=True, no_think=True,
+        note="Runs on this machine. No API key, no quota, nothing leaves the "
+             "laptop. Start it with `ollama serve` and pull a model first.",
+    ),
     "anthropic": Provider(
         key="anthropic", label="Anthropic (Claude)",
         url="https://api.anthropic.com/v1/messages",
@@ -65,7 +78,7 @@ PROVIDERS: Dict[str, Provider] = {
         fmt="openai", auth="bearer",
         default_model="llama-3.3-70b-versatile",
         console="https://console.groq.com/keys",
-        free=True, json_mode=True,
+        free=True, rpm=25, json_mode=True,
         note="Free tier, no card. Rate limited per minute and per day. "
              "Expect more blocked rewrites than Claude — the guards catch them.",
     ),
@@ -75,7 +88,7 @@ PROVIDERS: Dict[str, Provider] = {
         fmt="openai", auth="bearer",
         default_model="gemini-3.6-flash",
         console="https://aistudio.google.com/apikey",
-        free=True, json_mode=True,
+        free=True, rpm=5, json_mode=True,
         note="Free tier via AI Studio. Uses Google's OpenAI-compatible endpoint.",
     ),
     "openrouter": Provider(
@@ -84,18 +97,128 @@ PROVIDERS: Dict[str, Provider] = {
         fmt="openai", auth="bearer",
         default_model="meta-llama/llama-3.3-70b-instruct:free",
         console="https://openrouter.ai/keys",
-        free=True,
+        free=True, rpm=15,
         note="Models ending in ':free' cost nothing but queue behind paid traffic.",
     ),
 }
 
-DEFAULT_PROVIDER = "anthropic"
-DEFAULT_MODEL = PROVIDERS["anthropic"].default_model
+# Local-first: the app should do something useful the moment it starts, with no
+# key and no quota. Ollama is the only provider that can promise that.
+DEFAULT_PROVIDER = "ollama"
+DEFAULT_MODEL = PROVIDERS[DEFAULT_PROVIDER].default_model
 SMART_MODEL = "claude-opus-4-5"
+
+# Env var per provider. Local providers have none — kept here so the app and the
+# client agree on one table instead of two copies drifting apart.
+ENV_VARS: Dict[str, str] = {
+    "ollama": "",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+}
+
+
+# A local server is either up or it is not, and asking costs a millisecond on
+# loopback — but `available` is read on every Streamlit rerun, so cache it.
+_REACHABLE: Dict[str, tuple] = {}
+_REACHABLE_TTL = 5.0
+
+
+def local_server_up(provider_key: str = "ollama", timeout: float = 1.0) -> bool:
+    """Is the local model server actually listening? Cached for a few seconds."""
+    prov = PROVIDERS.get(provider_key)
+    if not prov or not prov.local:
+        return False
+    now = time.monotonic()
+    hit = _REACHABLE.get(provider_key)
+    if hit and now - hit[0] < _REACHABLE_TTL:
+        return hit[1]
+    base = prov.url.split("/v1/")[0]
+    try:
+        requests.get(f"{base}/api/version", timeout=timeout).raise_for_status()
+        up = True
+    except requests.RequestException:
+        up = False
+    _REACHABLE[provider_key] = (now, up)
+    return up
+
+
+def installed_models(provider_key: str = "ollama", timeout: float = 2.0) -> List[str]:
+    """Models Ollama already has pulled locally. [] if it is not running."""
+    prov = PROVIDERS.get(provider_key)
+    if not prov or not prov.local:
+        return []
+    base = prov.url.split("/v1/")[0]
+    try:
+        r = requests.get(f"{base}/api/tags", timeout=timeout)
+        r.raise_for_status()
+        return [m["name"] for m in r.json().get("models", [])]
+    except (requests.RequestException, ValueError, KeyError):
+        return []
 
 
 class LLMError(RuntimeError):
     pass
+
+
+# --------------------------------------------------------------------------
+# request pacing
+# --------------------------------------------------------------------------
+# These timestamps deliberately live at module scope, keyed by provider, NOT on
+# the client. Streamlit rebuilds the client on every rerun, so per-client
+# bookkeeping resets the moment the user ticks a checkbox — while the provider's
+# quota window keeps counting. That is what let the JD-extraction call go
+# invisible to the tailoring run, which then fired four more requests against an
+# already-spent budget and got a 429.
+_CALL_TIMES: Dict[str, List[float]] = {}
+_WINDOW = 60.0
+# One wait should always be enough; a handful covers several callers racing for
+# the same slot. Anything beyond that is a broken clock, not contention.
+_PACE_MAX_ROUNDS = 8
+
+
+def _pace(provider: Provider, sleep=time.sleep, clock=time.monotonic) -> float:
+    """Block until another request fits inside the provider's per-minute quota.
+
+    Returns how long we waited, for logging. Unmetered providers (local models,
+    paid tiers) return immediately.
+
+    `sleep` and `clock` are injectable so the tests can exercise this without
+    actually waiting a minute. They must stay consistent with each other: a
+    fake sleep has to advance the fake clock, or this loop cannot make
+    progress. The bounded retry below makes that a loud failure rather than a
+    hang if they ever disagree.
+    """
+    if not provider.rpm:
+        return 0.0
+    waited = 0.0
+    for _ in range(_PACE_MAX_ROUNDS):
+        now = clock()
+        times = [t for t in _CALL_TIMES.get(provider.key, []) if now - t < _WINDOW]
+        if len(times) < provider.rpm:
+            times.append(now)
+            _CALL_TIMES[provider.key] = times
+            return waited
+        # Wait out the oldest call, plus a margin — the provider's clock and
+        # ours are not the same clock.
+        delay = min(_WINDOW, max(0.0, _WINDOW - (now - times[0])) + 0.5)
+        _CALL_TIMES[provider.key] = times
+        sleep(delay)
+        waited += delay
+    raise LLMError(
+        f"Rate-limit pacing for {provider.label} made no progress after "
+        f"{_PACE_MAX_ROUNDS} rounds. This means the clock did not advance "
+        f"across sleeps."
+    )
+
+
+def reset_pacing(provider_key: str = "") -> None:
+    """Clear pacing history — for tests, and for the app's 'reset' control."""
+    if provider_key:
+        _CALL_TIMES.pop(provider_key, None)
+    else:
+        _CALL_TIMES.clear()
 
 
 @dataclass
@@ -121,26 +244,33 @@ class LLMClient:
         self.provider: Provider = PROVIDERS.get(provider, PROVIDERS[DEFAULT_PROVIDER])
         self.api_key = api_key or os.environ.get(self._env_var(), "")
         self.model = model or self.provider.default_model
-        self.timeout = timeout
+        # A local 8B generating 4k tokens is far slower than a hosted endpoint.
+        self.timeout = max(timeout, 600) if self.provider.local else timeout
         self.max_retries = max_retries
         self.usage = Usage()
         self.transcript: List[Dict[str, Any]] = []
 
     def _env_var(self) -> str:
-        return {
-            "anthropic": "ANTHROPIC_API_KEY",
-            "groq": "GROQ_API_KEY",
-            "gemini": "GEMINI_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-        }.get(self.provider.key, "ANTHROPIC_API_KEY")
+        return ENV_VARS.get(self.provider.key, "ANTHROPIC_API_KEY")
 
     @property
     def available(self) -> bool:
+        """Can this client actually complete a request right now?
+
+        For a local provider this is a liveness question, not a key question.
+        Claiming True while nothing is listening is worse than useless: callers
+        that fall back to an offline path when a model is unavailable would
+        instead block for the full timeout and then fail.
+        """
+        if self.provider.local:
+            return local_server_up(self.provider.key)
         return bool(self.api_key)
 
     # -- request shaping -------------------------------------------------
     def _headers(self) -> Dict[str, str]:
         h = {"content-type": "application/json"}
+        if self.provider.auth == "none":
+            return h
         if self.provider.auth == "x-api-key":
             h["x-api-key"] = self.api_key
             h["anthropic-version"] = API_VERSION
@@ -173,6 +303,14 @@ class LLMClient:
         }
         if json_mode and self.provider.json_mode:
             body["response_format"] = {"type": "json_object"}
+        if self.provider.no_think:
+            # Reasoning models (granite4.2, qwen3, deepseek-r1 …) spend the
+            # token budget on a separate `reasoning` field and can return an
+            # EMPTY `content` when max_tokens runs out mid-thought. We want the
+            # answer, not the deliberation — the critic loop is the app's
+            # reasoning. Providers that do not know this field ignore it, and
+            # the 400 handler below strips it if one objects.
+            body["reasoning_effort"] = "none"
         return body
 
     @staticmethod
@@ -228,7 +366,7 @@ class LLMClient:
     def complete(self, system: str, user: str, *, max_tokens: int = 4000,
                  temperature: float = 0.2, label: str = "",
                  json_mode: bool = False) -> str:
-        if not self.api_key:
+        if not self.api_key and not self.provider.local:
             raise LLMError(
                 f"No API key for {self.provider.label}. Add "
                 f"{self._env_var()} to your Streamlit secrets, or paste a key "
@@ -239,9 +377,26 @@ class LLMClient:
         last_err: Optional[str] = None
 
         for attempt in range(self.max_retries):
+            # Counts against the provider's window *before* the request, so a
+            # call can never slip past the budget.
+            _pace(self.provider)
             try:
                 r = requests.post(self.provider.url, headers=headers,
                                   json=payload, timeout=self.timeout)
+            except requests.ConnectionError as exc:
+                if self.provider.local:
+                    # No amount of retrying starts a server that is not running.
+                    raise LLMError(
+                        f"Could not reach {self.provider.label} at "
+                        f"{self.provider.url}. Start it with `ollama serve` "
+                        f"(or open the Ollama app), then pull the model:\n\n"
+                        f"    ollama pull {self.model}\n\n"
+                        f"Nothing else in the app needs it — the gap report and "
+                        f"ATS score still work."
+                    ) from exc
+                last_err = f"network error: {exc}"
+                time.sleep(1.5 * (attempt + 1))
+                continue
             except requests.RequestException as exc:
                 last_err = f"network error: {exc}"
                 time.sleep(1.5 * (attempt + 1))
@@ -254,6 +409,18 @@ class LLMClient:
                 self.transcript.append({"label": label, "in": user[:4000],
                                         "out": text[:8000]})
                 if not text.strip():
+                    # A reasoning model that spent the whole budget thinking
+                    # returns content="" with the deliberation in `reasoning`.
+                    # Retrying is pointless; say what actually happened.
+                    choice = (data.get("choices") or [{}])[0]
+                    msg = choice.get("message") or {}
+                    if msg.get("reasoning") and choice.get("finish_reason") == "length":
+                        raise LLMError(
+                            f"'{self.model}' is a reasoning model and used the "
+                            f"entire {max_tokens}-token budget on its internal "
+                            f"thinking, leaving no answer. Raise max tokens, or "
+                            f"pick a model without a thinking mode."
+                        )
                     last_err = "provider returned an empty completion"
                     continue
                 return text
@@ -263,6 +430,10 @@ class LLMClient:
             if r.status_code == 400 and "response_format" in body and \
                     "response_format" in payload:
                 payload.pop("response_format", None)
+                continue
+            if r.status_code == 400 and "reasoning_effort" in body and \
+                    "reasoning_effort" in payload:
+                payload.pop("reasoning_effort", None)
                 continue
             if r.status_code in (429, 500, 502, 503, 529):
                 wait = 2.0 * (attempt + 1)
@@ -281,6 +452,12 @@ class LLMClient:
                     f"Check it at {self.provider.console}. Details: {body}"
                 )
             if r.status_code == 404:
+                if self.provider.local:
+                    raise LLMError(
+                        f"Ollama has no model called '{self.model}'. Pull it "
+                        f"first:\n\n    ollama pull {self.model}\n\n"
+                        f"`ollama list` shows what you already have."
+                    )
                 # Providers retire model names constantly, and they usually name
                 # the replacement in the error. Surface that instead of raw JSON.
                 raise LLMError(self._model_gone_message(body))
@@ -363,7 +540,7 @@ class StubLLM(LLMClient):
     """
 
     def __init__(self, handlers: Optional[Dict[str, Any]] = None):
-        super().__init__(api_key="stub", model="stub", provider=DEFAULT_PROVIDER)
+        super().__init__(api_key="stub", model="stub", provider="anthropic")
         self.handlers: Dict[str, Any] = handlers or {}
         self.seen: List[str] = []
 

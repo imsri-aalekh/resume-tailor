@@ -1,0 +1,83 @@
+\documentclass[9.5pt]{article}
+\usepackage[margin=0.32in]{geometry}
+\usepackage{enumitem}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\pagestyle{empty}
+\setlist[itemize]{leftmargin=0.18in, topsep=0pt, itemsep=0pt, parsep=0pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\linespread{0.96}
+
+\newcommand{\sectionhead}[1]{\vspace{4pt}\textbf{#1}\vspace{1pt}\par}
+
+\begin{document}
+
+\begin{center}
+{\LARGE \textbf{Jane Doe}}\\[2pt]
+Email: jane.doe@example.com \quad Mobile: +00-0000000000
+\end{center}
+
+\sectionhead{Skills Summary}
+\begin{itemize}
+\item Languages and Tools: Base SAS (SAS Certified Specialist: Base Programming Using SAS 9.4), Advanced SQL, Python (Pandas, Numpy, Matplotlib, Seaborn, Scikit-learn), Microsoft Excel (Advanced Excel VBA), Github, SAS Viya, PowerBI
+\item Skills: Exploratory Data Analysis, Root Cause Analysis, Statistical Modeling, AI-Assisted Unit Testing
+\item Process Optimization: Workflow Automation, Legacy Code Refactoring, Stakeholder Management
+\end{itemize}
+
+\sectionhead{Experience}
+\textbf{Wells Fargo Bangalore} \quad | \quad Aug 2022 - Present\\
+Senior Risk Analytics Consultant (Consumer Unsecured Lending - Credit Cards Portfolio)
+\begin{itemize}
+\item Managed end-to-end monitoring for Bucket 1 (1-30 DPD) strategy and Early Cure Model input attributes, analyzing inflow/outflow dynamics to optimize roll-forward rates.
+\item Performed vintage analysis and delivered strategy recommendations that led to a 3\% decrease in the Bucket 1 roll-forward rate.
+\item Led a critical RCA in SAS/SQL on a 1,000\% anomalous spike in Bucket 1 volume (3k to 30k accounts/month), identifying legacy filter and upstream logic failures and preventing unnecessary customer outreach.
+\item Designed and implemented automation workflows that reduced manual processing time by 70\%, increasing team bandwidth for high-priority analytical tasks.
+\item Engineered and deployed a high-scale SAS data pipeline automating daily extraction, transformation, and ingestion of 7M+ cumulative records during the PowerCurve-to-FICO Decision Engine migration shadow production run.
+\item Mentored junior analysts on SAS/SQL best practices and analytical techniques within the Consumer Unsecured Lending team.
+\item Supported champion/challenger test design for collections strategy changes, sizing test/control populations and evaluating performance lift.
+\end{itemize}
+
+\sectionhead{Projects}
+\textbf{Collections Strategy Analytics - B1 Delinquency Migration \& Vintage Performance Analysis:}
+\begin{itemize}
+\item Developed an account-level Bucket 1 (1-30 DPD) delinquency vintage performance framework and weighted vintage scorecards, identifying that the Jul-2024 vintage achieved a 69\% weighted cure rate versus 60-63\% for historical July vintages, while reducing roll-forward rates from approximately 16\% to 11\%.
+\item Designed balance-segmented collections performance dashboards covering 2,800 delinquent accounts and \$15.3MM in outstanding balances to identify key drivers of cure and roll-forward risk.
+\item Identified a strong inverse relationship between balance size and cure behaviour -- cure rates declined from 80.5\% in the $\leq$\$1K segment to 62.7\% in the $>$\$10K segment, while same-status delinquency rose from 8.3\% to 27.4\% -- and quantified that $>$\$10K accounts represented only 14.2\% of delinquent accounts but 41.8\% of total balances (\$6.4MM of \$15.3MM).
+\item Established a collections prioritization framework recommending differentiated treatment: digital-first, lower-cost engagement for high self-cure, low-balance accounts and intensified intervention for high-balance, persistent delinquency segments.
+\end{itemize}
+
+\textbf{Internal Behaviour Score Model Attributes (Small Business Cards):}
+\begin{itemize}
+\item To enhance the credit limit of existing small businesses, and ensure that the Expected Losses are not significantly more (approx. 5\%) than the previous strategy.
+\item Collaborated with the Risk Modelling Group to revise the threshold for the input attributes to reflect the new vintages.
+\end{itemize}
+
+\textbf{Probability of Default Model for Credit Card Data (Independent Project):}
+\begin{itemize}
+\item Handled highly imbalanced financial data using SMOTE and feature engineering to train more robust machine learning models.
+\item Validated the models by evaluating discriminatory power and rank-order stability using ROC AUC Curve, Gini Coefficient, and KS statistic.
+\end{itemize}
+
+\textbf{Balance Transfer Source Integration:}
+\begin{itemize}
+\item Partnered with System of Records (SOR) and Strategy teams to integrate new upstream data sources for the Balance Transfer portfolio.
+\item Strategized and executed the merging of new data feeds into existing infrastructures while retiring obsolete fields to maintain a lean, business-aligned data environment.
+\item Extracted and transformed complex data from MongoDB and Teradata to support ad-hoc analysis and strategic research initiatives for the credit card portfolio.
+\end{itemize}
+
+\sectionhead{Education}
+\begin{itemize}
+\item BITS Pilani Work Integrated Learning Program (Remote) - 8.67 CGPA -- Master of Technology - Artificial Intelligence and Machine Learning -- November 2024 - Present
+\item Indira Gandhi Delhi Technical University for Women (Delhi) - 83\% -- Bachelor of Technology - Electronics and Communication -- Aug 2018 - May 2022
+\item Hillwoods Academy (Delhi) - 90.8\% -- All India Senior Secondary Board Examination -- 2018
+\item Hillwoods Academy (Delhi) - 10 CGPA -- All India Secondary Board Examination -- 2016
+\end{itemize}
+
+\sectionhead{Awards}
+\begin{itemize}
+\item Manager Spotlight Award -- Developing Small Business Cards NonMon Reconciliation process for several modelling fields.
+\item Manager Spotlight Award -- Developing Data Validation Process Automation framework for validation reports.
+\end{itemize}
+
+\end{document}
